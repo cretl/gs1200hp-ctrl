@@ -1,2 +1,3 @@
 # gs1200hp-ctrl
-Control GS1200-5HP with a simple bash script
+Control a Zyxel GS1200-5HP switch with a simple bash script.
+Only curl is needed.
