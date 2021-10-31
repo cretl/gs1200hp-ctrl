@@ -3,6 +3,12 @@
 <p>Control the PoE ports of a Zyxel GS1200-5HP switch with a simple bash script.<br />
 Only curl is needed.</p>
 
+
+<h2>Warning</h2>
+<p>
+The script currently does <b>NOT</b> work with the new firmware version <b>V2.00(ABKN.1)C0</b> as this version changed the login method from a clear text password POST to an encrypted method.
+</p>
+
 <h2>Info</h2>
 <p>
 With this simple bash script you can control a Zyxel GS1200-5HP v2 PoE switch.<br />
@@ -26,7 +32,7 @@ Tested firmware: V2.00(ABKN.0)C0 (latest available firmware at 2021/02/01).
 <p>The script uses the web interface of the switch to set the currently active PoE ports.<br />
 It does perform the following steps:<br />
 <ol>
-<li>Login to the router web interface with the supplied IP address and password.</li>
+<li>Login to the switch's web interface with the supplied IP address and password.</li>
 <li>The script saves the session cookie, which is required to perform the following steps.</li>
 <li>Analyze the currently active ports by getting the http://${switchIP}/port_state_data.js file.</li>
 <li>Getting the active PoE ports by posting to the http://$switchIP/port_state_set.cgi file.</li>
