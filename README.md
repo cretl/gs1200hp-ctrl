@@ -1,24 +1,23 @@
 # gs1200hp-ctrl
 <h2>TL;DR</h2>
-<p>Control the PoE ports of a Zyxel GS1200-5HP switch with a simple bash script.<br />
-Only curl is needed.</p>
-
-
-<h2>Warning</h2>
 <p>
-The script currently does <b>NOT</b> work with the new firmware version <b>V2.00(ABKN.1)C0</b> as this version changed the login method from a clear text password POST to an encrypted method.
+Control the PoE ports of a Zyxel GS1200-5HP switch with a simple Bash script.<br />
+Only Bash, curl and printf are needed.
 </p>
 
 <h2>Info</h2>
 <p>
 With this simple bash script you can control a Zyxel GS1200-5HP v2 PoE switch.<br />
 The script <b>may</b> also work with hardware revision v1.<br />
-Tested firmware: V2.00(ABKN.0)C0 (latest available firmware at 2021/02/01).
+Tested firmware: V2.00(ABKN.1)C0 (latest available firmware at 2021/11/01).
 </p>
 
 <h3>Script</h3>
 <h4>Dependencies</h4>
-<p>bash and curl</p>
+<p>
+Bash, curl and printf.
+Just install with e.g. <code>apt install bash curl printf</code>
+</p>
 
 <h4>Installation</h4>
 <ol>
@@ -32,20 +31,22 @@ Tested firmware: V2.00(ABKN.0)C0 (latest available firmware at 2021/02/01).
 <p>The script uses the web interface of the switch to set the currently active PoE ports.<br />
 It does perform the following steps:<br />
 <ol>
-<li>Login to the switch's web interface with the supplied IP address and password.</li>
-<li>The script saves the session cookie, which is required to perform the following steps.</li>
-<li>Analyze the currently active ports by getting the http://${switchIP}/port_state_data.js file.</li>
-<li>Getting the active PoE ports by posting to the http://$switchIP/port_state_set.cgi file.</li>
-<li>After completing the script does log out to be able to login again.</li>
+  <li>Login to the switch's web interface with the supplied IP address and password. If the firmware version requires an "encryption" of the password it is done before the login.</li>
+  <li>The script saves the session cookie, which is required to perform the following steps.</li>
+  <li>Analyze the currently active ports by getting the http://${switchIP}/port_state_data.js file.</li>
+  <li>Getting the active PoE ports by posting to the http://$switchIP/port_state_set.cgi file.</li>
+  <li>After completing the script does log out to be able to login again.</li>
 </ol>
 </p>
 
 <h4>Background</h4>
-<p>The 4 PoE ports of the switch have the following numerical values:<br />
+<p>
+The 4 PoE ports of the switch have the following numerical values:<br />
 port1=1;	port2=2;	port3=4;	port4=8<br />
 The currently active PoE ports are calculates by combining these values.<br />
 Examples:  0=[off]; 1=[1 on]; 3=[1&2 on]; 5=[1&2&3 on]; 15=[1&2&3&4 on];<br />
-There are 16 combinations possible.</p>
+There are 16 combinations possible.
+</p>
 
 <h4>Important notes</h4>
 <ul>
