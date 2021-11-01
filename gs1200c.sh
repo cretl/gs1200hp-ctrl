@@ -96,16 +96,16 @@ selectedPort() {
 checkCompatibility() {
   compatibleSwitchModel="GS1200-5HP v2"
   compatibleSwitchFirmwareVersion="V2.00(ABKN.1)C0"
-   
+
   switchInfo=$(curl -s http://${switchIP}/system_data.js --fail)
-  if [ -z "switchInfo" ]; then echo "Compatibility check failed. The script may not work."; return 1; fi
+  if [ -z "${switchInfo}" ]; then echo "Compatibility check failed. The script may not work."; return 1; fi
 
   switchModel=$(echo -n "$switchInfo" | grep model_name | cut -d "'" -f2)
-  if [ -z "switchModel" ]; then echo "Compatibility check failed ..."; return 1; fi
-  if [ "$switchModel" != "$compatibleSwitchModel" ]; then echo "Compatibility check failed ... $switchModel is not compatible."; return 1; fi
+  if [ -z "${switchModel}" ]; then echo "Compatibility check failed ... Couldn't get switch model."; return 1; fi
+  if [ "${switchModel}" != "${compatibleSwitchModel}" ]; then echo "Compatibility check failed ... ${switchModel} is not compatible."; return 1; fi
 
   switchFirmwareVersion=$(echo -n "$switchInfo" | grep sys_fmw_ver | cut -d "'" -f2)
-  if [ -z "switchFirmwareVersion" ]; then echo "Compatibility check failed ..."; return 1; fi
+  if [ -z "${switchFirmwareVersion}" ]; then echo "Compatibility check failed ... Couldn't get switch firmware version."; return 1; fi
 
   return 0
 }
