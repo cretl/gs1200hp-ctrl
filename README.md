@@ -7,7 +7,7 @@ Only Bash, curl and printf are needed.
 
 <h2>Info</h2>
 <p>
-With this simple bash script you can control a Zyxel GS1200-5HP v2 PoE switch.<br />
+With this simple Bash script you can control the PoE ports of a Zyxel GS1200-5HP v2 PoE switch.<br />
 The script <b>may</b> also work with hardware revision v1.<br />
 Tested firmware: V2.00(ABKN.1)C0 (latest available firmware at 2021/11/01).
 </p>
