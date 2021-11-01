@@ -24,7 +24,7 @@ Just install with e.g. <code>apt install bash curl printf</code>
 <li>Just copy the script to a file.</li>
 <li>Edit the settings part in the script.</li>
 <li>Make the file executeable (e.g., with chmod +x).</li>
-<li>Run the script: ./gs1200c.sh {on|off|status} {1|2|3|4|all}</li>
+<li>Run the script: <code>./gs1200c.sh {on|off|status} {1|2|3|4|all}</code></li>
 </ol>
 
 <h4>Script actions</h4>
