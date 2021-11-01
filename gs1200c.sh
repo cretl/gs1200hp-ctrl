@@ -1,24 +1,28 @@
 #!/bin/bash
 
-# Script version: 0.11
-# Script version date: 2021/01/31
-# dependencies: bash, curl
-
+## ----------------------------
+## INFO
+## -----
+# script version: 0.12
+# script version date: 2021/11/01
+# dependencies: Bash, curl, printf
+#
 # Zyxel GS1200-5HPv2
-# Firmware Version: V2.00(ABKN.0)C0
+# firmware version: V2.00(ABKN.1)C0
 # ports 1-4 = PoE; port 5 = non-PoE
-# Switch layout:
+# switch layout (front view):
 # [ p1 ] - [ p2 ] - [ p3 ] - [ p4 ] - [ p5 ]
 # values: port1=2^0;	port2=2^1;	port3=2^2;	port4=2^3
 # values: port1=1;	port2=2;	port3=4;	port4=8
 # combos examples: 0=[off]; 1=[1 on]; 3=[1&2 on]; 5=[1&2&3 on]; 15=[1&2&3&4 on];
-
+#
+## ----------------------------
 
 ## ----------------------------
 ## SETTINGS
 ## --------
 switchIP="192.168.0.2"
-adminPW="12345678"
+adminPw="12345678DEF"
 cookieJarFile="/tmp/gs1200cookies"
 ## ----------------------------
 
@@ -38,11 +42,11 @@ wantedAction=""
 wantedOperator=""
 calculatedPoePortBit=""
 
-showHelp () {
+showHelp() {
   echo "Usage: $0 {on|off|status} {1|2|3|4|all}"
 }
 
-selectedAction () {
+selectedAction() {
   case "${par1}" in
     on)
       wantedAction="on"
@@ -60,7 +64,7 @@ selectedAction () {
   esac
 }
 
-selectedPort () {
+selectedPort() {
   case "${par2}" in
     1)
       wantedPortNumber=${par2};
@@ -89,25 +93,103 @@ selectedPort () {
   esac
 }
 
+checkCompatibility() {
+  compatibleSwitchModel="GS1200-5HP v2"
+  compatibleSwitchFirmwareVersion="V2.00(ABKN.1)C0"
+   
+  switchInfo=$(curl -s http://${switchIP}/system_data.js --fail)
+  if [ -z "switchInfo" ]; then echo "Compatibility check failed. The script may not work."; return 1; fi
+
+  switchModel=$(echo -n "$switchInfo" | grep model_name | cut -d "'" -f2)
+  if [ -z "switchModel" ]; then echo "Compatibility check failed ..."; return 1; fi
+  if [ "$switchModel" != "$compatibleSwitchModel" ]; then echo "Compatibility check failed ... $switchModel is not compatible."; return 1; fi
+
+  switchFirmwareVersion=$(echo -n "$switchInfo" | grep sys_fmw_ver | cut -d "'" -f2)
+  if [ -z "switchFirmwareVersion" ]; then echo "Compatibility check failed ..."; return 1; fi
+
+  return 0
+}
+
+convertCodeToChar() {
+  #convertCodeToChar <code>
+  printf "\\$(printf '%03o' "$1")"
+}
+
+convertCharToCode() {
+  #convertCharToCode <char>
+  LC_CTYPE=C printf '%d' "'$1"
+}
+
+generateRandomChar() {
+  #generateRandomChar -> return one random character (space: A-Z a-z 0-9)
+  tr -dc A-Za-z0-9 < /dev/urandom | head -c 1
+}
+
+encryptAdminPw() {
+  declare -a adminPwArray #array to split password characters into
+  declare -a adminEncPwArray #array with adapted ("encrypted") password characters codes
+  declare -a adminEncPwArrayWithRandomChars #final array with random characters added before every character
+
+  for ((i=0; i<${#adminPw}; i++))
+  do
+    adminPwArray[$i]="${adminPw:$i:1}"
+    charCode=$(convertCharToCode ${adminPwArray[$i]})
+    newCharCode="$(( ${charCode} - ${#adminPw} ))"
+    newChar=$(convertCodeToChar $newCharCode)
+
+    adminEncPwArray[$i]="$newChar"
+
+    adminEncPwArrayWithRandomChars+="$(generateRandomChar)"
+    adminEncPwArrayWithRandomChars+="$newChar"
+  done
+  
+  adminEncPwArrayWithRandomChars+="$(generateRandomChar)"
+  adminPw="$(printf %s "${adminEncPwArrayWithRandomChars[@]}" $'\n')"
+}
+
 login() {
-  responseLogin=$(curl -c ${cookieJarFile} -s "http://${switchIP}/login.cgi" -X POST --data-raw "password=${adminPW}" -H "Content-Type: application/x-www-form-urlencoded" -H "Connection: keep-alive" -H "Origin: http://${switchIP}" -H "Referer: http://${switchIP}/" -w "%{http_code}" --fail -o /dev/null)
+  rm ${cookieJarFile} >/dev/null 2>&1
+  responseLogin=$(curl -c ${cookieJarFile} -s "http://${switchIP}/login.cgi" -X POST --data-raw "password=${adminPw}" -H "Content-Type: application/x-www-form-urlencoded" -H "Connection: keep-alive" -H "Origin: http://${switchIP}" -H "Referer: http://${switchIP}/" -w "%{http_code}" --fail -o /dev/null)
 
   if [ "${responseLogin}" -ne "200" ] ; then
-    echo "Login failed. Exiting ..."
+
+    echo "Login failed. Status Code != 200. Exiting ..."
     exit 1
+
   elif [ "${responseLogin}" -eq "200" ] ; then
-    echo "Login successful."
+  
+  cookieJarToken=$(cat ${cookieJarFile} | grep token | awk '{print $7}')
+
+    if [[ "$cookieJarToken" =~ ^[a-zA-Z0-9]{16}$ ]]; then
+      echo "Login successful."
+    else
+      echo "Login failed. Token not found in Cookie Jar. Exiting ... "
+      exit 1
+    fi
+    
   fi
 }
 
 logout() {
-  responseLogout=$(curl -b ${cookieJarFile} -s "http://${switchIP}/logout.html" -w "%{http_code}" --fail -o /dev/null)
+  responseLogout=$(curl -b ${cookieJarFile} -c ${cookieJarFile} -s "http://${switchIP}/logout.html" -w "%{http_code}" --fail -o /dev/null)
 
   if [ "${responseLogout}" -ne "200" ] ; then
     echo "Logout failed. Exiting ..."
+    rm ${cookieJarFile} >/dev/null 2>&1
     exit 1
   elif [ "${responseLogout}" -eq "200" ] ; then
-    echo "Logout successful."
+
+    cookieJarToken=$(cat ${cookieJarFile} | grep token | awk '{print $7}')
+
+    if [[ "$cookieJarToken" =~ ^[a-zA-Z0-9]{16}$ ]]; then
+      echo "Logout failed. Token still found in Cookie Jar. Exiting ... "
+      rm ${cookieJarFile} >/dev/null 2>&1
+      exit 1
+    else
+      echo "Logout successful. Exiting ... "
+      rm ${cookieJarFile} >/dev/null 2>&1
+    fi
+
   fi
 }
 
@@ -364,6 +446,10 @@ getStatus() {
 
 selectedAction
 selectedPort
+
+checkCompatibility
+
+if [ "$switchFirmwareVersion" == "$compatibleSwitchFirmwareVersion" ]; then encryptAdminPw; fi
 
 login
 
