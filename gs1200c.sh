@@ -3,7 +3,7 @@
 ## ----------------------------
 ## INFO
 ## -----
-# script version: 0.12
+# script version: 0.12a
 # script version date: 2021/11/01
 # dependencies: Bash, curl, printf
 #
