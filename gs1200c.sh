@@ -95,7 +95,7 @@ selectedPort() {
 
 checkCompatibility() {
   compatibleSwitchModel="GS1200-5HP v2"
-  compatibleSwitchFirmwareVersion="V2.00(ABKN.1)C0"
+  compatibleSwitchFirmwareVersion=("V2.00(ABKN.1)C0" "V2.00(ABKN.2)C0")
 
   switchInfo=$(curl -s http://${switchIP}/system_data.js --fail)
   if [ -z "${switchInfo}" ]; then echo "Compatibility check failed. The script may not work."; return 1; fi
@@ -149,7 +149,7 @@ encryptAdminPw() {
 
 login() {
   rm ${cookieJarFile} >/dev/null 2>&1
-  responseLogin=$(curl -c ${cookieJarFile} -s "http://${switchIP}/login.cgi" -X POST --data-raw "password=${adminPw}" -H "Content-Type: application/x-www-form-urlencoded" -H "Connection: keep-alive" -H "Origin: http://${switchIP}" -H "Referer: http://${switchIP}/" -w "%{http_code}" --fail -o /dev/null)
+  responseLogin=$(curl -c ${cookieJarFile} -s "http://${switchIP}/login.cgi" -X POST --data-urlencode "password=${adminPw}" -H "Content-Type: application/x-www-form-urlencoded" -H "Connection: keep-alive" -H "Origin: http://${switchIP}" -H "Referer: http://${switchIP}/" -w "%{http_code}" --fail -o /dev/null)
 
   if [ "${responseLogin}" -ne "200" ] ; then
 
@@ -449,7 +449,9 @@ selectedPort
 
 checkCompatibility
 
-if [ "$switchFirmwareVersion" == "$compatibleSwitchFirmwareVersion" ]; then encryptAdminPw; fi
+for ver in "${compatibleSwitchFirmwareVersion[@]}"; do
+  if [ "$switchFirmwareVersion" == "$ver" ]; then encryptAdminPw; fi
+done
 
 login
 
