@@ -194,112 +194,23 @@ logout() {
 }
 
 analyzeActivePoePort() {
-  currActivePoePortsBit=$(curl -b ${cookieJarFile} -s "http://${switchIP}/port_state_data.js" -H 'Connection: keep-alive' | grep portPoE | cut -d"'" -f 2)
+  currActivePoePortsBit=$(curl -b ${cookieJarFile} -s "http://${switchIP}/port_state_data.js" -H 'Connection: keep-alive' | grep portPoE | grep 'var  *portPoE  *=')
 
-  case $currActivePoePortsBit in
-    0)
-      isActivePoePort[1]="off"
-      isActivePoePort[2]="off"
-      isActivePoePort[3]="off"
-      isActivePoePort[4]="off"
-      ;;
-    1)
-      isActivePoePort[1]="on"
-      isActivePoePort[2]="off"
-      isActivePoePort[3]="off"
-      isActivePoePort[4]="off"
-      ;;
-    2)
-      isActivePoePort[1]="off"
-      isActivePoePort[2]="on"
-      isActivePoePort[3]="off"
-      isActivePoePort[4]="off"
-      ;;
-    4)
-      isActivePoePort[1]="off"
-      isActivePoePort[2]="off"
-      isActivePoePort[3]="on"
-      isActivePoePort[4]="off"
-      ;;
-    8)
-      isActivePoePort[1]="off"
-      isActivePoePort[2]="off"
-      isActivePoePort[3]="off"
-      isActivePoePort[4]="on"
+  if [ $? -ne 0 ]; then
+    echo "Failed to get currActivePoePortsBit. Exiting ..."
+    logout
+    exit 1
+  fi
 
-      ;;
-    3)
-      isActivePoePort[1]="on"
-      isActivePoePort[2]="on"
-      isActivePoePort[3]="off"
-      isActivePoePort[4]="off"
-      ;;
-    5)
-      isActivePoePort[1]="on"
-      isActivePoePort[2]="off"
-      isActivePoePort[3]="on"
-      isActivePoePort[4]="off"
-      ;;
-    9)
-      isActivePoePort[1]="on"
-      isActivePoePort[2]="off"
-      isActivePoePort[3]="off"
-      isActivePoePort[4]="on"
-      ;;
-    6)
-      isActivePoePort[1]="off"
-      isActivePoePort[2]="on"
-      isActivePoePort[3]="on"
-      isActivePoePort[4]="off"
-      ;;
-    10)
-      isActivePoePort[1]="off"
-      isActivePoePort[2]="on"
-      isActivePoePort[3]="off"
-      isActivePoePort[4]="on"
-      ;;
-    12)
-      isActivePoePort[1]="off"
-      isActivePoePort[2]="off"
-      isActivePoePort[3]="on"
-      isActivePoePort[4]="on"
-      ;;
-    7)
-      isActivePoePort[1]="on"
-      isActivePoePort[2]="on"
-      isActivePoePort[3]="on"
-      isActivePoePort[4]="off"
-      ;;
-    11)
-      isActivePoePort[1]="on"
-      isActivePoePort[2]="on"
-      isActivePoePort[3]="off"
-      isActivePoePort[4]="on"
-      ;;
-    13)
-      isActivePoePort[1]="on"
-      isActivePoePort[2]="off"
-      isActivePoePort[3]="on"
-      isActivePoePort[4]="on"
-      ;;
-    14)
-      isActivePoePort[1]="off"
-      isActivePoePort[2]="on"
-      isActivePoePort[3]="on"
-      isActivePoePort[4]="on"
-      ;;
-    15)
-      isActivePoePort[1]="on"
-      isActivePoePort[2]="on"
-      isActivePoePort[3]="on"
-      isActivePoePort[4]="on"
-      ;;
-    *)
-      echo "Failed to get currActivePoePortsBit. Exiting ..."
-      logout
-      exit 1
-    ;;
-  esac
+  currActivePoePortsBit=$(echo $currActivePoePortsBit | cut -d"'" -f 2)
+
+  for bit in 0 1 2 3; do
+    if [ $((currActivePoePortsBit & (1 << bit))) -ne 0 ]; then
+      isActivePoePort[$((bit+1))]="on"
+    else
+      isActivePoePort[$((bit+1))]="off"
+    fi
+  done
 }
 
 setPoePortBit() {
