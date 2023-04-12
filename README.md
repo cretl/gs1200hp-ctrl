@@ -1,4 +1,4 @@
-# gs1200hp-ctrl
+# gs1200hp-ctrl-ng
 <h2>TL;DR</h2>
 <p>
 Control the PoE ports of a Zyxel GS1200-5HP switch with a simple Bash script.<br />
