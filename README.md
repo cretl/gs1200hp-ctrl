@@ -8,15 +8,15 @@ Only Bash, curl and printf are needed.
 <h2>Info</h2>
 <p>
 With this simple Bash script you can control the PoE ports of a Zyxel GS1200-5HP v2 PoE switch.<br />
-The script <b>may</b> also work with hardware revision v1.<br />
-Tested firmware: V2.00(ABKN.1)C0 (latest available firmware at 2021/11/01).
+The script <i>may</i> also work with hardware revision v1.<br />
+Tested firmware: V2.00(ABKN.3)C0 (latest available firmware at 2024/08/24).
 </p>
 
 <h3>Script</h3>
 <h4>Dependencies</h4>
 <p>
-Bash, curl and printf.
-Just install with e.g. <code>apt install bash curl printf</code>
+Bash, curl,  printf and logger.
+Just install with e.g. <code>apt install bash curl printf logger</code>
 </p>
 
 <h4>Installation</h4>
@@ -51,5 +51,5 @@ There are 16 combinations possible.
 <h4>Important notes</h4>
 <ul>
   <li>After logging in and while a user session is active the switch blocks any other connection attempt to the HTTP port. You must successfully log out to be able to login again. If you fail to successfully logout, you must either restart (powercycle) the switch or wait for the session timeout (about 5 minutes).</li>
-  <li>The script is currently only tested with the firmware version <b>V2.00(ABKN.0)C0</b>. Newer versions may break the functionality.</li>
+  <li>The script is currently only tested with the firmware version <b>V2.00(ABKN.3)C0</b>. Newer versions may break the functionality.</li>
 </ul>
