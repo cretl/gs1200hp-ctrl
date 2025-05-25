@@ -3,18 +3,18 @@
 ## ----------------------------
 ## INFO
 ## -----
-# script version: 0.12a
-# script version date: 2021/11/01
-# dependencies: Bash, curl, printf
+# script version: 0.15
+# script version date: 2024/08/24
+# dependencies: Bash, curl, printf, logger
 #
 # Zyxel GS1200-5HPv2
-# firmware version: V2.00(ABKN.1)C0
+# firmware version: V2.00(ABKN.3)C0
 # ports 1-4 = PoE; port 5 = non-PoE
 # switch layout (front view):
 # [ p1 ] - [ p2 ] - [ p3 ] - [ p4 ] - [ p5 ]
 # values: port1=2^0;	port2=2^1;	port3=2^2;	port4=2^3
 # values: port1=1;	port2=2;	port3=4;	port4=8
-# combos examples: 0=[off]; 1=[1 on]; 3=[1&2 on]; 5=[1&2&3 on]; 15=[1&2&3&4 on];
+# combos examples: 0=[off]; 1=[1 on]; 3=[1&2 on]; 7=[1&2&3 on]; 15=[1&2&3&4 on];
 #
 ## ----------------------------
 
@@ -24,30 +24,83 @@
 switchIP="192.168.0.2"
 adminPw="12345678DEF"
 cookieJarFile="/tmp/gs1200cookies"
+
+#Debug Mode Settings
+debugMode=false #display debug messages
+debugMessageSyslogMode=false #log debug messages to syslog
 ## ----------------------------
 
 
 ## NO MODIFICATIONS NEEDED AFTER THIS LINE
 
-par1=$1
-par2=$2
+## ----------------------------
+## STATIC VARIABLES
+## --------
 
 declare -a indexPoePort=(0 1 2 4 8)
 declare -a isActivePoePort=(0 0 0 0 0)
 
-wantedPort=""
 wantedPortNumber=""
 wantedPortValue=""
 wantedAction=""
-wantedOperator=""
 calculatedPoePortBit=""
+
+wantedOperator="$1"
+wantedPort="$2"
+
+## ----------------------------
+## FUNCTIONS
+## --------
+
+checkDependencies() {
+  declare -a scriptDependencies=("bash" "curl" "printf" "logger")
+
+  for dependency in "${scriptDependencies[@]}"; do
+    if [[ ! $(command -v "${dependency}") ]]; then
+      echo "Depedency ${dependency} not found! The script won't work."
+      echo "Please check/install the dependencies: ${scriptDependencies[*]}."
+      echo "Exiting ..."
+      exit 1
+    fi
+  done
+}
+
+debugMessage() {
+#debugMessage ${debugMessageContent}
+  if [ "${debugMode}" = true ]; then
+    echo "#${1}"
+  fi
+  if [ "${debugMessageSyslogMode}" = true ]; then
+    syslogMessage "${1}"
+  fi
+}
+
+exitOnError() {
+  syslogMessage "$1"
+  echo "ERROR:"
+  echo "$1"
+  echo "Exiting ..."
+  doCleanup
+  exit 1
+}
+
+syslogMessage() {
+  #syslogMessage $message
+  #logger required!
+  logger -t "$0" "$1"
+}
 
 showHelp() {
   echo "Usage: $0 {on|off|status} {1|2|3|4|all}"
 }
 
+doCleanup() {
+  rm "${cookieJarFile}" >/dev/null 2>&1
+}
+
+
 selectedAction() {
-  case "${par1}" in
+  case "${wantedOperator}" in
     on)
       wantedAction="on"
     ;;
@@ -65,22 +118,22 @@ selectedAction() {
 }
 
 selectedPort() {
-  case "${par2}" in
+  case "${wantedPort}" in
     1)
-      wantedPortNumber=${par2};
-      wantedPortValue=${indexPoePort[${par2}]};
+      wantedPortNumber="${wantedPort}";
+      wantedPortValue="${indexPoePort[${wantedPort}]}";
     ;;
     2)
-      wantedPortNumber=${par2};
-      wantedPortValue=${indexPoePort[${par2}]};
+      wantedPortNumber="${wantedPort}";
+      wantedPortValue="${indexPoePort[${wantedPort}]}";
     ;;
     3)
-      wantedPortNumber=${par2};
-      wantedPortValue=${indexPoePort[${par2}]};
+      wantedPortNumber="${wantedPort}";
+      wantedPortValue="${indexPoePort[${wantedPort}]}";
     ;;
     4)
-      wantedPortNumber=${par2};
-      wantedPortValue=${indexPoePort[${par2}]};
+      wantedPortNumber="${wantedPort}";
+      wantedPortValue="${indexPoePort[${wantedPort}]}";
     ;;
     all)
       wantedPortNumber=0;
@@ -93,26 +146,10 @@ selectedPort() {
   esac
 }
 
-checkCompatibility() {
-  compatibleSwitchModel="GS1200-5HP v2"
-  compatibleSwitchFirmwareVersion="V2.00(ABKN.1)C0"
-
-  switchInfo=$(curl -s http://${switchIP}/system_data.js --fail)
-  if [ -z "${switchInfo}" ]; then echo "Compatibility check failed. The script may not work."; return 1; fi
-
-  switchModel=$(echo -n "$switchInfo" | grep model_name | cut -d "'" -f2)
-  if [ -z "${switchModel}" ]; then echo "Compatibility check failed ... Couldn't get switch model."; return 1; fi
-  if [ "${switchModel}" != "${compatibleSwitchModel}" ]; then echo "Compatibility check failed ... ${switchModel} is not compatible."; return 1; fi
-
-  switchFirmwareVersion=$(echo -n "$switchInfo" | grep sys_fmw_ver | cut -d "'" -f2)
-  if [ -z "${switchFirmwareVersion}" ]; then echo "Compatibility check failed ... Couldn't get switch firmware version."; return 1; fi
-
-  return 0
-}
-
 convertCodeToChar() {
   #convertCodeToChar <code>
-  printf "\\$(printf '%03o' "$1")"
+  oct=$(printf '%03o' "$1")
+  printf '%b' "\0$oct"
 }
 
 convertCharToCode() {
@@ -126,45 +163,41 @@ generateRandomChar() {
 }
 
 encryptAdminPw() {
-  declare -a adminPwArray #array to split password characters into
-  declare -a adminEncPwArray #array with adapted ("encrypted") password characters codes
+  declare -a adminPwArray #array to split password into characters
   declare -a adminEncPwArrayWithRandomChars #final array with random characters added before every character
 
+  #loop through $adminPw characters and create an "encrypted" password
   for ((i=0; i<${#adminPw}; i++))
   do
-    adminPwArray[$i]="${adminPw:$i:1}"
-    charCode=$(convertCharToCode ${adminPwArray[$i]})
-    newCharCode="$(( ${charCode} - ${#adminPw} ))"
-    newChar=$(convertCodeToChar $newCharCode)
+    adminPwArray[i]="${adminPw:$i:1}"
+    charCode=$(convertCharToCode "${adminPwArray[$i]}")
+    newCharCode="$(( charCode - ${#adminPw} ))"
+    newChar=$(convertCodeToChar "$newCharCode")
 
-    adminEncPwArray[$i]="$newChar"
-
-    adminEncPwArrayWithRandomChars+="$(generateRandomChar)"
-    adminEncPwArrayWithRandomChars+="$newChar"
+    adminEncPwArrayWithRandomChars+=("$(generateRandomChar)")
+    adminEncPwArrayWithRandomChars+=("$newChar")
   done
   
-  adminEncPwArrayWithRandomChars+="$(generateRandomChar)"
+  adminEncPwArrayWithRandomChars+=("$(generateRandomChar)")
   adminPw="$(printf %s "${adminEncPwArrayWithRandomChars[@]}" $'\n')"
 }
 
 login() {
-  rm ${cookieJarFile} >/dev/null 2>&1
+  rm "${cookieJarFile}" >/dev/null 2>&1
   responseLogin=$(curl -c ${cookieJarFile} -s "http://${switchIP}/login.cgi" -X POST --data-raw "password=${adminPw}" -H "Content-Type: application/x-www-form-urlencoded" -H "Connection: keep-alive" -H "Origin: http://${switchIP}" -H "Referer: http://${switchIP}/" -w "%{http_code}" --fail -o /dev/null)
-
+  
   if [ "${responseLogin}" -ne "200" ] ; then
 
-    echo "Login failed. Status Code != 200. Exiting ..."
-    exit 1
+    exitOnError "Login failed. Status Code != 200. Exiting ..."
 
   elif [ "${responseLogin}" -eq "200" ] ; then
   
-  cookieJarToken=$(cat ${cookieJarFile} | grep token | awk '{print $7}')
+  cookieJarToken=$(< "${cookieJarFile}" grep token | awk '{print $7}')
 
     if [[ "$cookieJarToken" =~ ^[a-zA-Z0-9]{16}$ ]]; then
-      echo "Login successful."
+      debugMessage "Login successful."
     else
-      echo "Login failed. Token not found in Cookie Jar. Exiting ... "
-      exit 1
+      exitOnError "Login failed. Token not found in cookie jar. Exiting ... "
     fi
     
   fi
@@ -174,136 +207,55 @@ logout() {
   responseLogout=$(curl -b ${cookieJarFile} -c ${cookieJarFile} -s "http://${switchIP}/logout.html" -w "%{http_code}" --fail -o /dev/null)
 
   if [ "${responseLogout}" -ne "200" ] ; then
-    echo "Logout failed. Exiting ..."
-    rm ${cookieJarFile} >/dev/null 2>&1
-    exit 1
+
+    exitOnError "Logout failed. Exiting ..."
+
   elif [ "${responseLogout}" -eq "200" ] ; then
 
-    cookieJarToken=$(cat ${cookieJarFile} | grep token | awk '{print $7}')
+    cookieJarToken=$(< "${cookieJarFile}" grep token | awk '{print $7}')
 
     if [[ "$cookieJarToken" =~ ^[a-zA-Z0-9]{16}$ ]]; then
-      echo "Logout failed. Token still found in Cookie Jar. Exiting ... "
-      rm ${cookieJarFile} >/dev/null 2>&1
-      exit 1
+      exitOnError "Logout failed. Token still found in Cookie Jar. Exiting ... "
     else
-      echo "Logout successful. Exiting ... "
-      rm ${cookieJarFile} >/dev/null 2>&1
+      debugMessage "Logout successful. Exiting ... "
+      doCleanup
     fi
 
   fi
 }
 
 analyzeActivePoePort() {
-  currActivePoePortsBit=$(curl -b ${cookieJarFile} -s "http://${switchIP}/port_state_data.js" -H 'Connection: keep-alive' | grep portPoE | cut -d"'" -f 2)
+  currentActivePoePortsBit=$(curl -b ${cookieJarFile} -s "http://${switchIP}/port_state_data.js" -H 'Connection: keep-alive' | grep portPoE | cut -d"'" -f 2)
+  debugMessage "currentActivePoePortsBit=$currentActivePoePortsBit"
+  
+  debugMessage "check if currentActivePoePortsBit is an number"
+  #check if currentActivePoePortsBit is an number
+  if ! [[ "$currentActivePoePortsBit" =~ ^[0-9]+$ ]]; then
+    echo "Error: currentActivePoePortsBit is not a number (currentActivePoePortsBit=${currentActivePoePortsBit}). Exiting ..."
+    exit 1
+  fi
 
-  case $currActivePoePortsBit in
-    0)
-      isActivePoePort[1]="off"
-      isActivePoePort[2]="off"
-      isActivePoePort[3]="off"
-      isActivePoePort[4]="off"
-      ;;
-    1)
-      isActivePoePort[1]="on"
-      isActivePoePort[2]="off"
-      isActivePoePort[3]="off"
-      isActivePoePort[4]="off"
-      ;;
-    2)
-      isActivePoePort[1]="off"
-      isActivePoePort[2]="on"
-      isActivePoePort[3]="off"
-      isActivePoePort[4]="off"
-      ;;
-    4)
-      isActivePoePort[1]="off"
-      isActivePoePort[2]="off"
-      isActivePoePort[3]="on"
-      isActivePoePort[4]="off"
-      ;;
-    8)
-      isActivePoePort[1]="off"
-      isActivePoePort[2]="off"
-      isActivePoePort[3]="off"
-      isActivePoePort[4]="on"
+  debugMessage "check if currentActivePoePortsBit is in correct range"
+  #check if currentActivePoePortsBit is in correct range
+  if ((currentActivePoePortsBit < 1 || currentActivePoePortsBit > 15)); then
+    echo "Error: currentActivePoePortsBit is out of range (currentActivePoePortsBit=${currentActivePoePortsBit}). Exiting ..."
+    exit 1
+  fi
 
-      ;;
-    3)
-      isActivePoePort[1]="on"
-      isActivePoePort[2]="on"
-      isActivePoePort[3]="off"
-      isActivePoePort[4]="off"
-      ;;
-    5)
-      isActivePoePort[1]="on"
-      isActivePoePort[2]="off"
-      isActivePoePort[3]="on"
-      isActivePoePort[4]="off"
-      ;;
-    9)
-      isActivePoePort[1]="on"
-      isActivePoePort[2]="off"
-      isActivePoePort[3]="off"
-      isActivePoePort[4]="on"
-      ;;
-    6)
-      isActivePoePort[1]="off"
-      isActivePoePort[2]="on"
-      isActivePoePort[3]="on"
-      isActivePoePort[4]="off"
-      ;;
-    10)
-      isActivePoePort[1]="off"
-      isActivePoePort[2]="on"
-      isActivePoePort[3]="off"
-      isActivePoePort[4]="on"
-      ;;
-    12)
-      isActivePoePort[1]="off"
-      isActivePoePort[2]="off"
-      isActivePoePort[3]="on"
-      isActivePoePort[4]="on"
-      ;;
-    7)
-      isActivePoePort[1]="on"
-      isActivePoePort[2]="on"
-      isActivePoePort[3]="on"
-      isActivePoePort[4]="off"
-      ;;
-    11)
-      isActivePoePort[1]="on"
-      isActivePoePort[2]="on"
-      isActivePoePort[3]="off"
-      isActivePoePort[4]="on"
-      ;;
-    13)
-      isActivePoePort[1]="on"
-      isActivePoePort[2]="off"
-      isActivePoePort[3]="on"
-      isActivePoePort[4]="on"
-      ;;
-    14)
-      isActivePoePort[1]="off"
-      isActivePoePort[2]="on"
-      isActivePoePort[3]="on"
-      isActivePoePort[4]="on"
-      ;;
-    15)
-      isActivePoePort[1]="on"
-      isActivePoePort[2]="on"
-      isActivePoePort[3]="on"
-      isActivePoePort[4]="on"
-      ;;
-    *)
-      echo "Failed to get currActivePoePortsBit. Exiting ..."
-      logout
-      exit 1
-    ;;
-  esac
+  #loop through all ports and check which port is on and which is off
+  for ((q=1; q<${#indexPoePort[@]}; q++))
+  do
+    if ((currentActivePoePortsBit & indexPoePort[q])); then
+      debugMessage "Port $q is on"
+      isActivePoePort[q]="on"
+    else
+      debugMessage "Port $q is off"
+      isActivePoePort[q]="off"
+    fi
+  done
 }
 
 setPoePortBit() {
-
   responseSetPoePortBit=$(curl -b ${cookieJarFile} -s "http://$switchIP/port_state_set.cgi" --data "g_port_state=31&g_port_flwcl=0&g_port_poe=${calculatedPoePortBit}&g_port_speed0=0&g_port_speed1=0&g_port_speed2=0&g_port_speed3=0&g_port_speed4=0" -w "%{http_code}" --fail -o /dev/null)
 
   if [ "${responseSetPoePortBit}" -ne "200" ] ; then
@@ -316,13 +268,12 @@ setPoePortBit() {
 }
 
 switchOnOff() {
-  
   analyzeActivePoePort
 
   echo "Current status:"
   getStatus
 
-  if [ ${wantedPortNumber} = 0 ]; then
+  if [ "${wantedPortNumber}" = 0 ]; then
   #all ports selected
 
     allPortsEqualWantedAction=true
@@ -333,7 +284,7 @@ switchOnOff() {
         allPortsEqualWantedAction=false
         break
       fi
-      i=$(( ${i} + 1 ))
+      i=$(( i + 1 ))
     done
 
     if [ "${allPortsEqualWantedAction}" = true ]; then
@@ -349,7 +300,7 @@ switchOnOff() {
        calculatedPoePortBit=0
     fi
 
-    if [ ${calculatedPoePortBit} -eq ${currActivePoePortsBit} ]; then
+    if [ "${calculatedPoePortBit}" -eq "${currentActivePoePortsBit}" ]; then
 
        echo "All PoE ports are already ${wantedAction}. Exiting ..."
        logout
@@ -370,7 +321,7 @@ switchOnOff() {
          exit 1
        fi
        
-       calculatedPoePortBit=$((${currActivePoePortsBit} + ${wantedPortValue}))
+       calculatedPoePortBit=$((currentActivePoePortsBit + wantedPortValue))
        
     elif [ "${wantedAction}" = "off" ]; then
 
@@ -380,11 +331,11 @@ switchOnOff() {
          exit 1
        fi
 
-       calculatedPoePortBit=$((${currActivePoePortsBit} - ${wantedPortValue}))
+       calculatedPoePortBit=$((currentActivePoePortsBit - wantedPortValue))
 
     fi
 
-    if [ ${calculatedPoePortBit} -eq ${currActivePoePortsBit} ]; then
+    if [ "${calculatedPoePortBit}" -eq "${currentActivePoePortsBit}" ]; then
 
        echo "Port${wantedPortNumber} is already ${wantedAction}. Exiting ..."
        logout
@@ -408,11 +359,11 @@ switchOnOff() {
 
   echo "Switching port${wantedPortNumber} ${wantedAction} ..."
 
-  echo "Setting PoePortBit ..."
+  debugMessage "Setting PoePortBit ..."
   setPoePortBit
-  echo "action done."
-  echo "  "
-  echo "Status after action:"
+  debugMessage "action done."
+  debugMessage "  "
+  debugMessage "Status after action:"
   getStatus
 }
 
@@ -423,14 +374,14 @@ getStatus() {
   echo "Port : Status"
   echo "-----:-------"
 
-  if [ ${wantedPortNumber} = 0 ]; then
+  if [ "${wantedPortNumber}" = 0 ]; then
 
     i=1
     while [ ${i} -lt ${#isActivePoePort[@]} ]
     do
       status=${isActivePoePort[${i}]^^}
       echo "P${i}   : ${status}"
-      i=$(( ${i} + 1 ))
+      i=$(( i + 1 ))
     done
 
   else
@@ -444,12 +395,16 @@ getStatus() {
   echo "  "
 }
 
+## ----------------------------
+## SCRIPT
+## --------
+
+checkDependencies
+
 selectedAction
 selectedPort
 
-checkCompatibility
-
-if [ "$switchFirmwareVersion" == "$compatibleSwitchFirmwareVersion" ]; then encryptAdminPw; fi
+encryptAdminPw
 
 login
 
